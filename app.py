@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 import fitz
-import torch
+from importlib.util import find_spec
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
@@ -22,6 +22,13 @@ LABEL_COLORS = {
     "Joyful": "#FFF2CC",
     "Unknown": "#F2F2F2"
 }
+
+def is_module_available(module_name):
+    return find_spec(module_name) is not None
+
+def get_missing_indobert_dependencies():
+    required_modules = ("torch", "datasets", "transformers", "accelerate")
+    return [module for module in required_modules if not is_module_available(module)]
 
 def patch_fasttext_numpy_compat():
     try:
@@ -274,6 +281,7 @@ def highlight_html(text, label, confidence=None):
     """
 
 def train_indobert(train_df, test_df):
+    import torch
     from datasets import Dataset
     from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
     from sklearn.preprocessing import LabelEncoder
@@ -422,7 +430,20 @@ if df is not None:
         st.bar_chart(df_trainable["label"].value_counts())
 
         test_size = st.slider("Test size", 0.1, 0.4, 0.2)
-        run_bert = st.checkbox("Jalankan IndoBERT GPU-ready")
+        fasttext_available = is_module_available("fasttext")
+        missing_indobert_dependencies = get_missing_indobert_dependencies()
+
+        if not fasttext_available:
+            st.caption("fastText dilewati di deployment ini karena dependency opsional `fasttext-wheel` tidak dipasang.")
+
+        if missing_indobert_dependencies:
+            st.caption(
+                "IndoBERT dinonaktifkan di deployment ini karena dependency opsional belum dipasang: "
+                + ", ".join(missing_indobert_dependencies)
+            )
+            run_bert = st.checkbox("Jalankan IndoBERT GPU-ready", disabled=True)
+        else:
+            run_bert = st.checkbox("Jalankan IndoBERT GPU-ready")
 
         X_train, X_test, y_train, y_test = train_test_split(
             df_trainable["clean_text"],
@@ -452,44 +473,47 @@ if df is not None:
                     "report": classification_report(y_test, svm_pred, zero_division=0)
                 }
 
-            try:
-                import fasttext
+            if fasttext_available:
+                try:
+                    import fasttext
 
-                with st.spinner("Training fastText..."):
-                    fasttext_patched = patch_fasttext_numpy_compat()
+                    with st.spinner("Training fastText..."):
+                        fasttext_patched = patch_fasttext_numpy_compat()
 
-                    train_ft = pd.DataFrame({
-                        "label": "__label__" + y_train.astype(str),
-                        "text": X_train
-                    })
+                        train_ft = pd.DataFrame({
+                            "label": "__label__" + y_train.astype(str),
+                            "text": X_train
+                        })
 
-                    train_ft["fasttext"] = train_ft["label"] + " " + train_ft["text"]
-                    train_ft["fasttext"].to_csv("train.txt", index=False, header=False)
+                        train_ft["fasttext"] = train_ft["label"] + " " + train_ft["text"]
+                        train_ft["fasttext"].to_csv("train.txt", index=False, header=False)
 
-                    ft_model = fasttext.train_supervised(
-                        input="train.txt",
-                        epoch=25,
-                        lr=0.5,
-                        wordNgrams=2,
-                        dim=100
-                    )
+                        ft_model = fasttext.train_supervised(
+                            input="train.txt",
+                            epoch=25,
+                            lr=0.5,
+                            wordNgrams=2,
+                            dim=100
+                        )
 
-                    ft_preds = []
+                        ft_preds = []
 
-                    for t in X_test:
-                        pred = ft_model.predict(t)[0][0]
-                        ft_preds.append(pred.replace("__label__", ""))
+                        for t in X_test:
+                            pred = ft_model.predict(t)[0][0]
+                            ft_preds.append(pred.replace("__label__", ""))
 
-                    results["fastText"] = {
-                        "metrics": evaluate_model(y_test, ft_preds, "fastText"),
-                        "report": classification_report(y_test, ft_preds, zero_division=0)
-                    }
+                        results["fastText"] = {
+                            "metrics": evaluate_model(y_test, ft_preds, "fastText"),
+                            "report": classification_report(y_test, ft_preds, zero_division=0)
+                        }
 
-                    if fasttext_patched:
-                        st.caption("fastText memakai patch kompatibilitas untuk NumPy 2.x.")
+                        if fasttext_patched:
+                            st.caption("fastText memakai patch kompatibilitas untuk NumPy 2.x.")
 
-            except Exception as e:
-                st.warning(f"fastText gagal dijalankan: {e}")
+                except Exception as e:
+                    st.warning(f"fastText gagal dijalankan: {e}")
+            else:
+                st.info("fastText dilewati karena dependency opsional belum dipasang.")
 
             if run_bert:
                 try:
