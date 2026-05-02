@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 import re
+import tempfile
 import fitz
 from importlib.util import find_spec
 
@@ -13,8 +15,8 @@ from sklearn.svm import LinearSVC
 
 st.set_page_config(page_title="MMJ Classifier", layout="wide")
 
-st.title("📚 Klasifikasi Meaningful, Mindful, Joyful")
-st.caption("PDF/CSV → Auto Label → Highlight → SVM → fastText → IndoBERT → Macro F1")
+st.title("Klasifikasi Meaningful, Mindful, Joyful")
+st.caption("PDF/CSV -> Auto Label -> Highlight -> SVM -> fastText -> IndoBERT -> Macro F1")
 
 LABEL_COLORS = {
     "Meaningful": "#DFF5E1",
@@ -26,9 +28,26 @@ LABEL_COLORS = {
 def is_module_available(module_name):
     return find_spec(module_name) is not None
 
+def is_streamlit_cloud_environment():
+    home_dir = os.path.expanduser("~")
+    return (
+        os.getenv("USER") == "appuser"
+        or home_dir == "/home/appuser"
+        or os.path.isdir("/home/appuser/.streamlit")
+    )
+
 def get_missing_indobert_dependencies():
     required_modules = ("torch", "datasets", "transformers", "accelerate")
     return [module for module in required_modules if not is_module_available(module)]
+
+RUNNING_ON_STREAMLIT_CLOUD = is_streamlit_cloud_environment()
+
+if RUNNING_ON_STREAMLIT_CLOUD:
+    st.info(
+        "Mode Streamlit Community Cloud aktif. Untuk menjaga app tetap ringan, "
+        "fitur training berat seperti fastText dan IndoBERT disembunyikan. "
+        "Training yang tersedia di Cloud hanya Linear SVM."
+    )
 
 def patch_fasttext_numpy_compat():
     try:
@@ -72,7 +91,7 @@ def patch_fasttext_numpy_compat():
 def clean_text(text):
     text = str(text).lower()
     text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"[^a-zA-ZÀ-ÿ0-9\s]", "", text)
+    text = re.sub(r"[^a-zA-Z\u00C0-\u00FF0-9\s]", "", text)
     return text.strip()
 
 def evaluate_model(y_true, y_pred, model_name):
@@ -398,7 +417,7 @@ if df is not None:
         st.dataframe(df[cols].head(30))
 
         st.download_button(
-            "⬇️ Download Dataset Berlabel",
+            "Download Dataset Berlabel",
             df.to_csv(index=False).encode("utf-8"),
             "dataset_mmj_auto_label.csv",
             "text/csv"
@@ -432,18 +451,35 @@ if df is not None:
         test_size = st.slider("Test size", 0.1, 0.4, 0.2)
         fasttext_available = is_module_available("fasttext")
         missing_indobert_dependencies = get_missing_indobert_dependencies()
+        run_fasttext = False
+        run_bert = False
+        available_models = ["Linear SVM"]
 
-        if not fasttext_available:
-            st.caption("fastText dilewati di deployment ini karena dependency opsional `fasttext-wheel` tidak dipasang.")
-
-        if missing_indobert_dependencies:
+        if RUNNING_ON_STREAMLIT_CLOUD:
             st.caption(
-                "IndoBERT dinonaktifkan di deployment ini karena dependency opsional belum dipasang: "
-                + ", ".join(missing_indobert_dependencies)
+                "Mode Cloud aktif: opsi model berat disembunyikan untuk menjaga "
+                "pemakaian resource tetap aman."
             )
-            run_bert = st.checkbox("Jalankan IndoBERT GPU-ready", disabled=True)
         else:
-            run_bert = st.checkbox("Jalankan IndoBERT GPU-ready")
+            if fasttext_available:
+                available_models.append("fastText")
+                run_fasttext = st.checkbox("Jalankan fastText", value=True)
+            else:
+                st.caption(
+                    "fastText dilewati di sesi ini karena dependency opsional "
+                    "`fasttext-wheel` tidak dipasang."
+                )
+
+            if missing_indobert_dependencies:
+                st.caption(
+                    "IndoBERT dinonaktifkan di sesi ini karena dependency opsional "
+                    "belum dipasang: " + ", ".join(missing_indobert_dependencies)
+                )
+            else:
+                available_models.append("IndoBERT")
+                run_bert = st.checkbox("Jalankan IndoBERT GPU-ready")
+
+        st.caption("Model yang tersedia di sesi ini: " + ", ".join(available_models))
 
         X_train, X_test, y_train, y_test = train_test_split(
             df_trainable["clean_text"],
@@ -456,7 +492,7 @@ if df is not None:
         train_df = pd.DataFrame({"clean_text": X_train, "label": y_train})
         test_df = pd.DataFrame({"clean_text": X_test, "label": y_test})
 
-        if st.button("🚀 Jalankan Training"):
+        if st.button("Jalankan Training"):
             results = {}
 
             with st.spinner("Training Linear SVM..."):
@@ -473,7 +509,7 @@ if df is not None:
                     "report": classification_report(y_test, svm_pred, zero_division=0)
                 }
 
-            if fasttext_available:
+            if run_fasttext:
                 try:
                     import fasttext
 
@@ -486,15 +522,25 @@ if df is not None:
                         })
 
                         train_ft["fasttext"] = train_ft["label"] + " " + train_ft["text"]
-                        train_ft["fasttext"].to_csv("train.txt", index=False, header=False)
 
-                        ft_model = fasttext.train_supervised(
-                            input="train.txt",
-                            epoch=25,
-                            lr=0.5,
-                            wordNgrams=2,
-                            dim=100
-                        )
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp_file:
+                            temp_train_path = temp_file.name
+
+                        train_ft["fasttext"].to_csv(temp_train_path, index=False, header=False)
+
+                        try:
+                            ft_model = fasttext.train_supervised(
+                                input=temp_train_path,
+                                epoch=25,
+                                lr=0.5,
+                                wordNgrams=2,
+                                dim=100
+                            )
+                        finally:
+                            try:
+                                os.remove(temp_train_path)
+                            except OSError:
+                                pass
 
                         ft_preds = []
 
@@ -512,8 +558,6 @@ if df is not None:
 
                 except Exception as e:
                     st.warning(f"fastText gagal dijalankan: {e}")
-            else:
-                st.info("fastText dilewati karena dependency opsional belum dipasang.")
 
             if run_bert:
                 try:
@@ -531,7 +575,7 @@ if df is not None:
             results_df = pd.DataFrame([v["metrics"] for v in results.values()])
             results_df = results_df.sort_values(by="Macro F1", ascending=False)
 
-            st.subheader("🏆 Perbandingan Model — Macro F1 Utama")
+            st.subheader("Perbandingan Model - Macro F1 Utama")
             st.dataframe(results_df)
 
             st.bar_chart(results_df.set_index("Model")["Macro F1"])
@@ -540,7 +584,7 @@ if df is not None:
             st.info(generate_results_summary(results_df))
 
             for model_name, output in results.items():
-                st.subheader(f"Classification Report — {model_name}")
+                st.subheader(f"Classification Report - {model_name}")
                 st.code(output["report"])
 
     else:
