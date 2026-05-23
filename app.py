@@ -463,7 +463,7 @@ if df is not None:
         else:
             if fasttext_available:
                 available_models.append("fastText")
-                run_fasttext = st.checkbox("Jalankan fastText", value=True)
+                run_fasttext = st.checkbox("Jalankan fastText")
             else:
                 st.caption(
                     "fastText dilewati di sesi ini karena dependency opsional "
