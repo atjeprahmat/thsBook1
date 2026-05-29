@@ -18,12 +18,175 @@ st.set_page_config(page_title="MMJ Classifier", layout="wide")
 st.title("Klasifikasi Meaningful, Mindful, Joyful")
 st.caption("PDF/CSV -> Auto Label -> Highlight -> SVM -> fastText -> IndoBERT -> Macro F1")
 
+LABEL_REFERENCES = {
+    "Meaningful": {
+        "indicator": (
+            "Materi membantu peserta didik mengaitkan konsep baru dengan "
+            "pengetahuan awal, memahami konsep, tujuan, prinsip, prosedur, "
+            "dan penerapan pengetahuan."
+        ),
+        "references": [
+            (
+                "Ausubel, D. P. (1960). The use of advance organizers in the "
+                "learning and retention of meaningful verbal material. "
+                "Journal of Educational Psychology, 51(5), 267-272. "
+                "https://doi.org/10.1037/h0046669"
+            ),
+            (
+                "Novak, J. D. (2002). Meaningful learning: The essential "
+                "factor for conceptual change in limited or inappropriate "
+                "propositional hierarchies leading to empowerment of learners. "
+                "Science Education, 86(4), 548-571. "
+                "https://doi.org/10.1002/sce.10032"
+            ),
+            (
+                "Polman, J., Hornstra, L., & Volman, M. (2021). The meaning "
+                "of meaningful learning in mathematics in upper-primary "
+                "education. Learning Environments Research, 24, 469-486. "
+                "https://doi.org/10.1007/s10984-020-09337-8"
+            ),
+            (
+                "Brod, G. (2021). Toward an understanding of when prior "
+                "knowledge helps or hinders learning. npj Science of Learning, "
+                "6, 24. https://doi.org/10.1038/s41539-021-00103-w"
+            ),
+            (
+                "Gupte, T., Watts, F. M., Schmidt-McCormack, J. A., Zaimi, I., "
+                "Gere, A. R., & Shultz, G. V. (2021). Students' meaningful "
+                "learning experiences from participating in organic chemistry "
+                "writing-to-learn activities. Chemistry Education Research and "
+                "Practice, 22, 396-414. https://doi.org/10.1039/D0RP00266F"
+            ),
+            (
+                "Nachtigall, V., Shaffer, D. W., & Rummel, N. (2022). Stirring "
+                "a secret sauce: A literature review on the conditions and "
+                "effects of authentic learning. Educational Psychology Review, "
+                "34, 1479-1516. https://doi.org/10.1007/s10648-022-09676-3"
+            ),
+        ],
+    },
+    "Mindful": {
+        "indicator": (
+            "Materi mendorong kesadaran belajar, refleksi, berpikir kritis, "
+            "melihat masalah dari berbagai perspektif, evaluasi, dan "
+            "pengambilan keputusan."
+        ),
+        "references": [
+            (
+                "Langer, E. J. (2000). Mindful learning. Current Directions "
+                "in Psychological Science, 9(6), 220-223. "
+                "https://doi.org/10.1111/1467-8721.00099"
+            ),
+            (
+                "Napoli, M., Krech, P. R., & Holley, L. C. (2005). Mindfulness "
+                "training for elementary school students: The attention academy. "
+                "Journal of Applied School Psychology, 21(1), 99-125. "
+                "https://doi.org/10.1300/J370v21n01_05"
+            ),
+            (
+                "Henriksen, D., Richardson, C., & Shack, K. (2020). Mindfulness "
+                "and creativity: Implications for thinking and learning. "
+                "Thinking Skills and Creativity, 37, 100689. "
+                "https://doi.org/10.1016/j.tsc.2020.100689"
+            ),
+            (
+                "Randall, J. G., Zajac, S. A., & Hanson, M. D. (2025). Mindful "
+                "training: Integrating mindfulness into workplace learning. "
+                "Human Resource Development Review. "
+                "https://doi.org/10.1177/15344843251395914"
+            ),
+            (
+                "Bordunos, A. K., Miletich, M. P., & Volkova, N. V. (2024). "
+                "Mindful learning: Principles and prospect of use in higher "
+                "education. Psychological Science and Education, 29(4), 16-30. "
+                "https://doi.org/10.17759/pse.2024290402"
+            ),
+            (
+                "Henriksen, D., & Gruber, N. (2024). System-wide school "
+                "mindfulness: Addressing elementary students' social-emotional "
+                "learning and wellbeing. Frontiers in Education, 9, 1272545. "
+                "https://doi.org/10.3389/feduc.2024.1272545"
+            ),
+            (
+                "Ghanizadeh, A., Sadeghi Bajestani, G., Hosseinpour, F., "
+                "Hosseini, A., Makhloughi, F., & Beiraghi Toosi, M. (2024). "
+                "Mindfulness-enhancing instruction (MEI): Contributions to "
+                "electroencephalogram (EEG) dynamics, higher order thinking "
+                "skills (HOTS), and effective learning. Thinking Skills and "
+                "Creativity, 53, 101611. "
+                "https://doi.org/10.1016/j.tsc.2024.101611"
+            ),
+        ],
+    },
+    "Joyful": {
+        "indicator": (
+            "Materi menciptakan pengalaman belajar yang aktif, menyenangkan, "
+            "kolaboratif, kreatif, berbasis permainan/proyek/praktik, dan "
+            "meningkatkan motivasi belajar."
+        ),
+        "references": [
+            (
+                "Conklin, H. G. (2014). Toward more joyful learning: Integrating "
+                "play into frameworks of middle grades teaching. American "
+                "Educational Research Journal, 51(6), 1227-1255. "
+                "https://doi.org/10.3102/0002831214549451"
+            ),
+            (
+                "Permana, R. S. G., Roni, M., Rahmawati, W., Fatihatul H, A., "
+                "& Susanto, S. (2022). Building joyful learning to enhance "
+                "students motivation in studying English. Attractive: Innovative "
+                "Education Journal, 4(2), 138-143. "
+                "https://doi.org/10.51278/aj.v4i2.382"
+            ),
+            (
+                "Putra, Z. H., Alim, J. A., Kurnia, R., Gunawan, Y., Dahnilsyah, "
+                "D., & Aljarrah, A. (2026). A systematic literature review of "
+                "joyful learning in mathematics: An implication for teaching "
+                "and learning in elementary school. Frontiers in Education, "
+                "11, 1561649. https://doi.org/10.3389/feduc.2026.1561649"
+            ),
+            (
+                "Waterworth, P. (2020). Creating joyful learning within a "
+                "democratic classroom. Journal of Teaching and Learning in "
+                "Elementary Education, 3(2), 109. "
+                "https://doi.org/10.33578/jtlee.v3i2.7841"
+            ),
+            (
+                "Wicaksono, S. R. (2020). Joyful learning in elementary school. "
+                "International Journal of Theory and Application in Elementary "
+                "and Secondary School Education, 2(2), 80-90. "
+                "https://doi.org/10.31098/ijtaese.v2i2.232"
+            ),
+            (
+                "Setyaningsih, N. D., & Dayu, D. P. K. (2022). Joyful learning "
+                "using Quizizz to increase learning interest post COVID-19. "
+                "Jurnal Basicedu, 6(4), 6789-6795. "
+                "https://doi.org/10.31004/basicedu.v6i4.3067"
+            ),
+            (
+                "Tafani, T., & Kamaludin, A. (2023). Development of PowToon "
+                "animation video on joyful learning loaded reaction rate "
+                "material to increase high school students' learning motivation. "
+                "Jurnal Kependidikan, 9(1), 258-271. "
+                "https://doi.org/10.33394/jk.v9i1.7057"
+            ),
+        ],
+    },
+}
+
 LABEL_COLORS = {
     "Meaningful": "#DFF5E1",
     "Mindful": "#E1ECFF",
     "Joyful": "#FFF2CC",
     "Unknown": "#F2F2F2"
 }
+
+with st.expander("Acuan jurnal untuk indikator MMJ"):
+    for label, metadata in LABEL_REFERENCES.items():
+        st.markdown(f"**{label}**")
+        st.write(metadata["indicator"])
+        for reference in metadata["references"]:
+            st.markdown(f"- {reference}")
 
 def is_module_available(module_name):
     return find_spec(module_name) is not None
@@ -169,7 +332,10 @@ def extract_pdf(uploaded_pdf):
     return pd.DataFrame(rows)
 
 def get_keyword_map():
+    """Keyword awal untuk rule-based labeling berdasarkan indikator jurnal MMJ."""
     return {
+        # Acuan: Ausubel (1960), Novak (2002), Polman et al. (2021),
+        # Brod (2021), Gupte et al. (2021), dan Nachtigall et al. (2022).
         "Meaningful": [
             "tujuan pembelajaran", "capaian pembelajaran", "kompetensi",
             "memahami", "menjelaskan", "mengidentifikasi", "menganalisis",
@@ -184,6 +350,8 @@ def get_keyword_map():
             "peta materi", "soft skill", "hard skill"
         ],
 
+        # Acuan: Langer (2000), Henriksen et al. (2020), Bordunos et al. (2024),
+        # Henriksen & Gruber (2024), Ghanizadeh et al. (2024), dan Randall et al. (2025).
         "Mindful": [
             "refleksi", "berpikir kritis", "berpikir", "problem solving",
             "pemecahan masalah", "analisis", "evaluasi", "mengevaluasi",
@@ -199,6 +367,9 @@ def get_keyword_map():
             "kesimpulan", "kritik", "saran", "alasan"
         ],
 
+        # Acuan: Conklin (2014), Waterworth (2020), Wicaksono (2020),
+        # Permana et al. (2022), Setyaningsih & Dayu (2022),
+        # Tafani & Kamaludin (2023), dan Putra et al. (2026).
         "Joyful": [
             "aktivitas", "aktivitas belajar", "kerja tim", "kelompok",
             "praktik", "praktik mandiri", "literasi mandiri",
