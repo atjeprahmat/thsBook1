@@ -309,27 +309,48 @@ def generate_results_summary(results_df):
 
     return "\n\n".join(summary_lines)
 
-def extract_pdf(uploaded_pdf):
-    doc = fitz.open(stream=uploaded_pdf.read(), filetype="pdf")
+def extract_pdf_doc(doc):
     rows = []
     progress = st.progress(0)
     total_pages = len(doc)
 
-    for i, page in enumerate(doc):
-        text = page.get_text("text")
-        paragraphs = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 30]
+    try:
+        for i, page in enumerate(doc):
+            text = page.get_text("text")
+            paragraphs = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 30]
 
-        for j, para in enumerate(paragraphs):
-            rows.append({
-                "page": i + 1,
-                "paragraph_id": j + 1,
-                "text": para
-            })
+            for j, para in enumerate(paragraphs):
+                rows.append({
+                    "page": i + 1,
+                    "paragraph_id": j + 1,
+                    "text": para
+                })
 
-        progress.progress((i + 1) / total_pages)
+            progress.progress((i + 1) / total_pages)
+    finally:
+        doc.close()
 
-    doc.close()
     return pd.DataFrame(rows)
+
+def extract_pdf(uploaded_pdf):
+    uploaded_pdf.seek(0)
+    doc = fitz.open(stream=uploaded_pdf.read(), filetype="pdf")
+    return extract_pdf_doc(doc)
+
+def extract_pdf_from_path(pdf_path):
+    doc = fitz.open(pdf_path)
+    return extract_pdf_doc(doc)
+
+def list_book_pdfs():
+    book_dir = "book"
+    if not os.path.isdir(book_dir):
+        return []
+
+    return sorted(
+        file_name
+        for file_name in os.listdir(book_dir)
+        if file_name.lower().endswith(".pdf")
+    )
 
 def get_keyword_map():
     """Keyword awal untuk rule-based labeling berdasarkan indikator jurnal MMJ."""
@@ -554,11 +575,50 @@ if mode == "Upload CSV":
         df = pd.read_csv(uploaded_file)
 
 if mode == "Upload PDF Buku":
-    uploaded_pdf = st.file_uploader("Upload PDF ratusan halaman", type=["pdf"])
-    if uploaded_pdf:
-        st.info("Membaca PDF per halaman...")
-        df = extract_pdf(uploaded_pdf)
-        st.success(f"Berhasil ekstrak {df.shape[0]} paragraf dari {df['page'].nunique()} halaman")
+    pdf_source = st.radio(
+        "Sumber PDF",
+        ["Pilih dari folder book", "Upload dari komputer"],
+        horizontal=True
+    )
+
+    if pdf_source == "Pilih dari folder book":
+        book_pdfs = list_book_pdfs()
+        selected_pdf = st.selectbox("File PDF di folder book", book_pdfs)
+
+        if selected_pdf:
+            pdf_path = os.path.join("book", selected_pdf)
+            if st.button("Ekstrak PDF"):
+                try:
+                    st.info("Membaca PDF per halaman...")
+                    df = extract_pdf_from_path(pdf_path)
+                    st.session_state["pdf_df"] = df
+                    st.session_state["pdf_source_path"] = pdf_path
+                    st.success(
+                        f"Berhasil ekstrak {df.shape[0]} paragraf dari "
+                        f"{df['page'].nunique()} halaman"
+                    )
+                except Exception as exc:
+                    st.error(f"Gagal membaca PDF: {exc}")
+
+            if st.session_state.get("pdf_source_path") == pdf_path:
+                df = st.session_state.get("pdf_df")
+        else:
+            st.warning("Belum ada file PDF di folder `book`.")
+
+    if pdf_source == "Upload dari komputer":
+        uploaded_pdf = st.file_uploader("Upload PDF ratusan halaman", type=["pdf"])
+        if uploaded_pdf:
+            try:
+                st.info("Membaca PDF per halaman...")
+                df = extract_pdf(uploaded_pdf)
+                st.session_state["pdf_df"] = df
+                st.session_state["pdf_source_path"] = uploaded_pdf.name
+                st.success(
+                    f"Berhasil ekstrak {df.shape[0]} paragraf dari "
+                    f"{df['page'].nunique()} halaman"
+                )
+            except Exception as exc:
+                st.error(f"Gagal membaca PDF: {exc}")
 
 if df is not None:
     st.subheader("Preview Data")
